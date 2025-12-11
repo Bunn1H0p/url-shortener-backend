@@ -12,4 +12,5 @@ model Url {
   longUrl    String
   createdAt  DateTime @default(now())
   clickCount Int      @default(0)
+  expiresAt  DateTime? @db.Timestamp(6)
 }
