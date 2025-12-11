@@ -22,18 +22,6 @@ export async function shortenUrlHandler(req, res) {
         .json({ error: "Missing or invalid 'url' in body" });
     }
 
-    // Normalize & validate expiresInDays (optional)
-    let expiresDaysNum = null;
-    if (expiresInDays !== undefined) {
-      const n = Number(expiresInDays);
-      if (!Number.isFinite(n) || n <= 0) {
-        return res
-          .status(400)
-          .json({ error: "expiresInDays must be a positive number" });
-      }
-      expiresDaysNum = n;
-    }
-
     // Service computes expiresAt and persists it
     const record = await createShortUrl(url, expiresDaysNum);
 

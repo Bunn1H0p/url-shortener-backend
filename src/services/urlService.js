@@ -93,13 +93,6 @@ export async function getUrlDetails(shortCode) {
     throw error;
   }
 
-  // Apply same expiration rule here
-  if (record.expiresAt && record.expiresAt <= new Date()) {
-    const error = new Error("Short URL has expired");
-    error.status = 410;
-    throw error;
-  }
-
   return {
     id: record.id,
     shortCode: record.shortCode,
