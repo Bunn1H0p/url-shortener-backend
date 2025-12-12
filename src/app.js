@@ -2,6 +2,7 @@
 import express from "express";
 import cors from "cors";
 import urlRoutes from "./routes/urlRoutes.js";
+import authRoutes from "./routes/authRoutes.js";
 
 const app = express();
 
@@ -12,6 +13,7 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
+app.use("/api", authRoutes);
 app.use("/", urlRoutes);
 
 export default app;
