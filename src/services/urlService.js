@@ -4,7 +4,7 @@ import prisma from "../lib/prisma.js";
 import { encodeBase62 } from "../utils/base62.js";
 import { BASE_URL } from "../config/env.js";
 
-export async function createShortUrl(rawUrl, expiresInDays = null) {
+export async function createShortUrl(rawUrl, expiresInDays = null, userId) {
   let longUrl;
   try {
     longUrl = new URL(rawUrl).toString();
@@ -34,6 +34,7 @@ export async function createShortUrl(rawUrl, expiresInDays = null) {
     data: {
       longUrl,
       expiresAt, // may be null
+      ownerId: userId, 
     },
   });
 
@@ -101,5 +102,61 @@ export async function getUrlDetails(shortCode) {
     clickCount: record.clickCount,
     shortUrl: `${BASE_URL}/${record.shortCode}`,
     expiresAt: record.expiresAt,
+  };
+}
+
+// UPDATE expiry (no Kafka, just DB)
+export async function updateUrlExpiry({ code, expiresInDays, user }) {
+  // 1. Find URL by shortCode
+  const record = await prisma.url.findUnique({
+    where: { shortCode: code },
+  });
+
+  if (!record) {
+    const error = new Error("Short URL not found");
+    error.status = 404;
+    throw error;
+  }
+
+  // 2. Authorization: only owner or admin
+  if (record.ownerId !== user.userId && user.role !== "admin") {
+    const error = new Error("Forbidden");
+    error.status = 403;
+    throw error;
+  }
+
+  // 3. Validate & compute new expiresAt
+  let newExpiresAt = null;
+
+  if (expiresInDays != null) {
+    const days = Number(expiresInDays);
+    if (!Number.isFinite(days) || days <= 0) {
+      const error = new Error("'expiresInDays' must be a positive number");
+      error.status = 400;
+      throw error;
+    }
+
+    const now = new Date();
+    const msInDay = 24 * 60 * 60 * 1000;
+    newExpiresAt = new Date(now.getTime() + days * msInDay);
+  } 
+    // Business rule: null means "no expiry"
+
+  // 4. Update DB
+  const updated = await prisma.url.update({
+    where: { id: record.id },
+    data: { expiresAt: newExpiresAt },
+  });
+
+  // NOTE: Redis cache will be invalidated/updated later (you can add that
+  // either here or in your controller if you want).
+
+  return {
+    id: updated.id,
+    shortCode: updated.shortCode,
+    longUrl: updated.longUrl,
+    shortUrl: `${BASE_URL}/${updated.shortCode}`,
+    expiresAt: updated.expiresAt,
+    clickCount: updated.clickCount,
   };
 }

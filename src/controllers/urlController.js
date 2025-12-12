@@ -5,6 +5,7 @@ import {
   getUrlByCode,
   incrementClickCount,
   getUrlDetails,
+  updateUrlExpiry,
 } from "../services/urlService.js";
 import redisClient from "../lib/redisClient.js";
 
@@ -15,6 +16,7 @@ const REDIRECT_CACHE_TTL_SECONDS = 60 * 60; // 1 hour
 export async function shortenUrlHandler(req, res) {
   try {
     const { url, expiresInDays } = req.body;
+    const { userId } = req.user;
 
     if (!url || typeof url !== "string") {
       return res
@@ -23,7 +25,7 @@ export async function shortenUrlHandler(req, res) {
     }
 
     // Service computes expiresAt and persists it
-    const record = await createShortUrl(url, expiresDaysNum);
+    const record = await createShortUrl(url, expiresInDays, userId);
 
     return res.status(201).json({
       id: record.id,
@@ -143,5 +145,39 @@ export async function getUrlDetailsHandler(req, res) {
     return res
       .status(status)
       .json({ error: err.message || "Failed to fetch URL details" });
+  }
+}
+
+// PATCH /api/urls/:code/expiry  (update expiry; requires authMiddleware)
+export async function patchUrlExpiryHandler(req, res) {
+  const { code } = req.params;
+  const { expiresInDays } = req.body ?? {};
+  const user = req.user; // set by authMiddleware
+
+  if (!code || typeof code !== "string") {
+    return res.status(400).json({ error: "Invalid or missing 'code'" });
+  }
+
+  try {
+    const record = await updateUrlExpiry({ code, expiresInDays, user });
+
+    // Optionally: you might want to invalidate Redis here directly:
+    const cacheKey = `${REDIRECT_CACHE_PREFIX}${code}`;
+    await redisClient.del(cacheKey);
+
+    return res.status(200).json({
+      id: record.id,
+      shortCode: record.shortCode,
+      longUrl: record.longUrl,
+      shortUrl: record.shortUrl,
+      expiresAt: record.expiresAt,
+      clickCount: record.clickCount,
+    });
+  } catch (err) {
+    console.error("patchUrlExpiryHandler error:", err);
+    const status = err.status || 500;
+    return res
+      .status(status)
+      .json({ error: err.message || "Failed to update expiry" });
   }
 }
